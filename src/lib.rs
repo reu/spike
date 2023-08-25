@@ -47,6 +47,18 @@ impl IntoResponse for StringRejection {
     }
 }
 
+impl<T> FromRequest for T
+where
+    T: FromRequestPart,
+{
+    type Rejection = <Self as FromRequestPart>::Rejection;
+
+    fn from_request(req: Request<Body>) -> Result<Self, Self::Rejection> {
+        let (mut parts, _body) = req.into_parts();
+        Self::from_request_parts(&mut parts)
+    }
+}
+
 impl FromRequest for String {
     type Rejection = StringRejection;
 
@@ -197,6 +209,26 @@ where
     }
 }
 
+impl<F, T1, Res> Handler<(T1,)> for F
+where
+    F: FnOnce(T1) -> Res + Clone + Send + 'static,
+    T1: FromRequest,
+    Res: IntoResponse,
+{
+    fn call(self, req: Request<Body>) -> Response<Body> {
+        let (parts, body) = req.into_parts();
+
+        let req = Request::from_parts(parts, body);
+
+        let last = match T1::from_request(req) {
+            Ok(val) => val,
+            Err(rejection) => return rejection.into_response(),
+        };
+
+        self(last).into_response()
+    }
+}
+
 impl<F, T1, T2, Res> Handler<(T1, T2)> for F
 where
     F: FnOnce(T1, T2) -> Res + Clone + Send + 'static,
@@ -219,5 +251,105 @@ where
         };
 
         self(t1, last).into_response()
+    }
+}
+
+impl<F, T1, T2, T3, Res> Handler<(T1, T2, T3)> for F
+where
+    F: FnOnce(T1, T2, T3) -> Res + Clone + Send + 'static,
+    T1: FromRequestPart,
+    T2: FromRequestPart,
+    T3: FromRequest,
+    Res: IntoResponse,
+{
+    fn call(self, req: Request<Body>) -> Response<Body> {
+        let (mut parts, body) = req.into_parts();
+        let t1 = match T1::from_request_parts(&mut parts) {
+            Ok(val) => val,
+            Err(rejection) => return rejection.into_response(),
+        };
+
+        let t2 = match T2::from_request_parts(&mut parts) {
+            Ok(val) => val,
+            Err(rejection) => return rejection.into_response(),
+        };
+
+        let req = Request::from_parts(parts, body);
+
+        let last = match T3::from_request(req) {
+            Ok(val) => val,
+            Err(rejection) => return rejection.into_response(),
+        };
+
+        self(t1, t2, last).into_response()
+    }
+}
+
+trait RoutedService: Service + Send + Sync {
+    fn clone_box(&self) -> Box<dyn RoutedService<Body = Self::Body, Error = Self::Error> + Send>;
+}
+
+impl<T> RoutedService for T
+where
+    T: Service + Send + Sync + Clone + 'static,
+{
+    fn clone_box(&self) -> Box<dyn RoutedService<Body = T::Body, Error = T::Error> + Send> {
+        Box::new(self.clone())
+    }
+}
+
+pub struct Route {
+    svc: Box<dyn RoutedService<Body = Body, Error = Infallible>>,
+}
+
+impl Clone for Route {
+    fn clone(&self) -> Self {
+        Route {
+            svc: self.svc.clone_box(),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Router {
+    router: matchit::Router<Route>,
+}
+
+impl Router {
+    pub fn new() -> Self {
+        Self {
+            router: matchit::Router::new(),
+        }
+    }
+}
+
+pub fn on<H, T>(handler: H) -> Route
+where
+    H: Handler<T>,
+    H: Sync + Send,
+    T: 'static + Send + Sync + Clone,
+{
+    Route {
+        svc: Box::new(HandlerService::new(handler)),
+    }
+}
+
+impl Router {
+    pub fn route(mut self, path: &str, route: Route) -> Router {
+        self.router.insert(path, route).unwrap();
+        self
+    }
+}
+
+impl Service for Router {
+    type Body = Body;
+    type Error = Infallible;
+
+    fn call(&self, request: Request<Body>) -> Result<Response<Self::Body>, Self::Error> {
+        let path = request.uri().path();
+        match self.router.at(path) {
+            Ok(route) => route.value.clone().svc.call(request),
+            Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
+        }
     }
 }
