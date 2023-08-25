@@ -5,6 +5,8 @@ use http::{
 };
 use touche::{header, server::Service, Body, HttpBody, Method, Request, Response, StatusCode};
 
+mod macros;
+
 pub trait FromRequest: Sized {
     type Rejection: IntoResponse;
 
@@ -87,24 +89,36 @@ impl IntoResponse for Infallible {
     }
 }
 
-impl<A, B> IntoResponse for (A, B)
-where
-    A: IntoResponseParts,
-    B: IntoResponse,
-{
-    fn into_response(self) -> Response<Body> {
-        let (a, b) = self;
-        let res = b.into_response();
-        let (parts, body) = res.into_parts();
+macro_rules! impl_into_response {
+    ($($ty:ident),* $(,)?) => {
+        #[allow(non_snake_case, unused_parens)]
+        impl<R, $($ty,)*> IntoResponse for ($($ty),*, R)
+        where
+            $($ty: IntoResponseParts,)*
+            R: IntoResponse,
+        {
+            fn into_response(self) -> Response<Body> {
+                let ($($ty),*, res) = self;
 
-        let parts = match a.into_response_parts(parts) {
-            Ok(parts) => parts,
-            Err(err) => return err.into_response(),
-        };
+                let res = res.into_response();
+                let (parts, body) = res.into_parts();
 
-        Response::from_parts(parts, body)
-    }
+                $(
+                    let parts = match $ty.into_response_parts(parts) {
+                        Ok(parts) => parts,
+                        Err(err) => {
+                            return err.into_response();
+                        }
+                    };
+                )*
+
+                Response::from_parts(parts, body)
+            }
+        }
+    };
 }
+
+all_the_tuples_no_last_special_case!(impl_into_response);
 
 impl IntoResponseParts for StatusCode {
     type Error = Infallible;
@@ -158,25 +172,34 @@ impl IntoResponse for String {
     }
 }
 
-impl<A, B> FromRequest for (A, B)
-where
-    A: FromRequestPart,
-    B: FromRequest,
-{
-    type Rejection = Response<Body>;
+macro_rules! impl_from_request {
+    ([$($ty:ident),*], $last:ident) => {
+        #[allow(non_snake_case, unused_mut)]
+        impl<$($ty,)* $last> FromRequest for ($($ty,)* $last,)
+        where
+            $($ty: FromRequestPart,)*
+            $last: FromRequest,
+        {
+            type Rejection = Response<Body>;
 
-    fn from_request(req: Request<Body>) -> Result<Self, Self::Rejection> {
-        let (mut parts, body) = req.into_parts();
+            fn from_request(req: Request<Body>) -> Result<Self, Self::Rejection> {
+                let (mut parts, body) = req.into_parts();
 
-        let first = A::from_request_parts(&mut parts).map_err(|err| err.into_response())?;
+                $(
+                    let $ty = $ty::from_request_parts(&mut parts).map_err(|err| err.into_response())?;
+                )*
 
-        let req = Request::from_parts(parts, body);
+                let req = Request::from_parts(parts, body);
 
-        let last = B::from_request(req).map_err(|err| err.into_response())?;
+                let $last = $last::from_request(req).map_err(|err| err.into_response())?;
 
-        Ok((first, last))
-    }
+                Ok(($($ty,)* $last,))
+            }
+        }
+    };
 }
+
+all_the_tuples!(impl_from_request);
 
 pub trait Handler<T>: Clone + Send + Sized + 'static {
     fn call(self, req: Request<Body>) -> Response<Body>;
@@ -209,81 +232,40 @@ where
     }
 }
 
-impl<F, T1, Res> Handler<(T1,)> for F
-where
-    F: FnOnce(T1) -> Res + Clone + Send + 'static,
-    T1: FromRequest,
-    Res: IntoResponse,
-{
-    fn call(self, req: Request<Body>) -> Response<Body> {
-        let (parts, body) = req.into_parts();
+macro_rules! impl_handler {
+    ([$($ty:ident),*], $last:ident) => {
+        #[allow(non_snake_case, unused_mut)]
+        impl<F, $($ty,)* $last, Res> Handler<($($ty,)* $last,)> for F
+        where
+            F: FnOnce($($ty,)* $last,) -> Res + Clone + Send + 'static,
+            $($ty: FromRequestPart,)*
+            $last: FromRequest,
+            Res: IntoResponse,
+        {
+            fn call(self, req: Request<Body>) -> Response<Body> {
+                let (mut parts, body) = req.into_parts();
 
-        let req = Request::from_parts(parts, body);
+                $(
+                    let $ty = match $ty::from_request_parts(&mut parts) {
+                        Ok(val) => val,
+                        Err(rejection) => return rejection.into_response(),
+                    };
+                )*
 
-        let last = match T1::from_request(req) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
+                let req = Request::from_parts(parts, body);
 
-        self(last).into_response()
-    }
+                let $last = match $last::from_request(req) {
+                    Ok(val) => val,
+                    Err(rejection) => return rejection.into_response(),
+                };
+
+                self($($ty,)* $last,).into_response()
+            }
+        }
+    };
 }
 
-impl<F, T1, T2, Res> Handler<(T1, T2)> for F
-where
-    F: FnOnce(T1, T2) -> Res + Clone + Send + 'static,
-    T1: FromRequestPart,
-    T2: FromRequest,
-    Res: IntoResponse,
-{
-    fn call(self, req: Request<Body>) -> Response<Body> {
-        let (mut parts, body) = req.into_parts();
-        let t1 = match T1::from_request_parts(&mut parts) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
-
-        let req = Request::from_parts(parts, body);
-
-        let last = match T2::from_request(req) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
-
-        self(t1, last).into_response()
-    }
-}
-
-impl<F, T1, T2, T3, Res> Handler<(T1, T2, T3)> for F
-where
-    F: FnOnce(T1, T2, T3) -> Res + Clone + Send + 'static,
-    T1: FromRequestPart,
-    T2: FromRequestPart,
-    T3: FromRequest,
-    Res: IntoResponse,
-{
-    fn call(self, req: Request<Body>) -> Response<Body> {
-        let (mut parts, body) = req.into_parts();
-        let t1 = match T1::from_request_parts(&mut parts) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
-
-        let t2 = match T2::from_request_parts(&mut parts) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
-
-        let req = Request::from_parts(parts, body);
-
-        let last = match T3::from_request(req) {
-            Ok(val) => val,
-            Err(rejection) => return rejection.into_response(),
-        };
-
-        self(t1, t2, last).into_response()
-    }
-}
+all_the_tuples!(impl_handler);
 
 trait RoutedService: Service + Send + Sync {
     fn clone_box(&self) -> Box<dyn RoutedService<Body = Self::Body, Error = Self::Error> + Send>;
