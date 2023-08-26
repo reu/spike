@@ -1,13 +1,10 @@
 use http::{Method, StatusCode};
-use spike::{
-    router::{get, post},
-    IntoResponse, Router,
-};
+use spike::{get, post, IntoResponse, Router};
 use touche::Server;
 
 fn main() -> std::io::Result<()> {
     let router = Router::new()
-        .route("/hello", get(hello_world).post(hello_post))
+        .route("/hello", get(hello_world).post(hello_post).any(any_hello))
         .route("/jesus", post(jesus))
         .route("/world", get(world));
 
@@ -20,6 +17,10 @@ fn hello_world(method: Method, body: String) -> impl IntoResponse {
 
 fn hello_post(method: Method, body: String) -> impl IntoResponse {
     (StatusCode::CREATED, format!("Hello: {method} - {body}"))
+}
+
+fn any_hello(method: Method, body: String) -> impl IntoResponse {
+    (StatusCode::CREATED, format!("Any Hello: {method} - {body}"))
 }
 
 fn world(method: Method, body: String) -> impl IntoResponse {

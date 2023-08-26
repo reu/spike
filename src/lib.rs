@@ -7,4 +7,4 @@ pub mod response;
 pub mod router;
 
 pub use crate::response::{IntoResponse, IntoResponseParts};
-pub use crate::router::Router;
+pub use crate::router::{delete, get, patch, post, put, Router};

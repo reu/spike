@@ -39,6 +39,11 @@ pub struct MethodRouter<B = Body, E = Infallible> {
     put: Option<Route<B, E>>,
     patch: Option<Route<B, E>>,
     delete: Option<Route<B, E>>,
+    options: Option<Route<B, E>>,
+    trace: Option<Route<B, E>>,
+    head: Option<Route<B, E>>,
+    connect: Option<Route<B, E>>,
+    fallback: Option<Route<B, E>>,
 }
 
 macro_rules! impl_method_router_methods {
@@ -85,8 +90,38 @@ macro_rules! impl_router_methods {
     }
 }
 
-impl_method_router_methods!(get, post, put, patch, delete);
-impl_router_methods!(get, post, put, patch, delete);
+impl_method_router_methods!(get, post, put, patch, delete, head, options, trace, connect);
+impl_router_methods!(get, post, put, patch, delete, head, options, trace, connect);
+
+impl MethodRouter {
+    pub fn any<H, T>(self, handler: H) -> MethodRouter
+    where
+        H: Handler<T>,
+        H: Send + Sync,
+        T: Send + Sync + Clone + 'static,
+    {
+        MethodRouter {
+            fallback: Some(Route {
+                svc: Box::new(HandlerService::new(handler)),
+            }),
+            ..self
+        }
+    }
+}
+
+pub fn any<H, T>(handler: H) -> MethodRouter
+where
+    H: Handler<T>,
+    H: Send + Sync,
+    T: Send + Sync + Clone + 'static,
+{
+    MethodRouter {
+        fallback: Some(Route {
+            svc: Box::new(HandlerService::new(handler)),
+        }),
+        ..Default::default()
+    }
+}
 
 impl Default for MethodRouter {
     fn default() -> Self {
@@ -96,6 +131,11 @@ impl Default for MethodRouter {
             put: None,
             patch: None,
             delete: None,
+            options: None,
+            trace: None,
+            head: None,
+            connect: None,
+            fallback: None,
         }
     }
 }
@@ -108,6 +148,11 @@ impl Clone for MethodRouter {
             put: self.put.clone(),
             patch: self.patch.clone(),
             delete: self.delete.clone(),
+            options: self.options.clone(),
+            trace: self.trace.clone(),
+            head: self.head.clone(),
+            connect: self.connect.clone(),
+            fallback: self.fallback.clone(),
         }
     }
 }
@@ -155,6 +200,21 @@ impl Service for Router {
                 }
                 Method::DELETE if route.value.delete.is_some() => {
                     Ok(route.value.delete.clone().unwrap().svc.call(request)?)
+                }
+                Method::HEAD if route.value.head.is_some() => {
+                    Ok(route.value.head.clone().unwrap().svc.call(request)?)
+                }
+                Method::OPTIONS if route.value.options.is_some() => {
+                    Ok(route.value.options.clone().unwrap().svc.call(request)?)
+                }
+                Method::TRACE if route.value.trace.is_some() => {
+                    Ok(route.value.trace.clone().unwrap().svc.call(request)?)
+                }
+                Method::CONNECT if route.value.connect.is_some() => {
+                    Ok(route.value.connect.clone().unwrap().svc.call(request)?)
+                }
+                _ if route.value.fallback.is_some() => {
+                    Ok(route.value.fallback.clone().unwrap().svc.call(request)?)
                 }
                 _ => Ok(StatusCode::METHOD_NOT_ALLOWED.into_response()),
             },
