@@ -1,4 +1,4 @@
-use std::{convert::Infallible, io, marker::PhantomData, str::Utf8Error};
+use std::{convert::Infallible, error::Error, io, marker::PhantomData, str::Utf8Error};
 
 use http::{
     request::Parts as RequestParts, response::Parts as ResponseParts, HeaderMap, HeaderValue,
@@ -280,8 +280,8 @@ where
     }
 }
 
-pub struct Route {
-    svc: Box<dyn RoutedService<Body = Body, Error = Infallible>>,
+pub struct Route<B = Body, E = Infallible> {
+    svc: Box<dyn RoutedService<Body = B, Error = E>>,
 }
 
 impl Clone for Route {
@@ -325,12 +325,12 @@ impl Router {
 
 impl Service for Router {
     type Body = Body;
-    type Error = Infallible;
+    type Error = Box<dyn Error + Send + Sync>;
 
     fn call(&self, request: Request<Body>) -> Result<Response<Self::Body>, Self::Error> {
         let path = request.uri().path();
         match self.router.at(path) {
-            Ok(route) => route.value.clone().svc.call(request),
+            Ok(route) => Ok(route.value.clone().svc.call(request)?),
             Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
         }
     }
