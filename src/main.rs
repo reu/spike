@@ -1,5 +1,5 @@
 use http::{Method, StatusCode};
-use spike::{on, IntoResponse, Router};
+use spike::{router::on, IntoResponse, Router};
 use touche::Server;
 
 fn main() -> std::io::Result<()> {
