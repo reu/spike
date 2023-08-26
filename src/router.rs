@@ -8,14 +8,14 @@ use crate::{
 };
 
 trait RoutedService: Service + Send + Sync {
-    fn clone_box(&self) -> Box<dyn RoutedService<Body = Self::Body, Error = Self::Error> + Send>;
+    fn clone_box(&self) -> Box<dyn RoutedService<Body = Self::Body, Error = Self::Error>>;
 }
 
 impl<T> RoutedService for T
 where
     T: Service + Send + Sync + Clone + 'static,
 {
-    fn clone_box(&self) -> Box<dyn RoutedService<Body = T::Body, Error = T::Error> + Send> {
+    fn clone_box(&self) -> Box<dyn RoutedService<Body = T::Body, Error = T::Error>> {
         Box::new(self.clone())
     }
 }
