@@ -1,7 +1,8 @@
 use spike::{
     http::{Method, StatusCode},
+    response::IntoResponse,
     routing::{get, put},
-    IntoResponse, Router, Server,
+    Router, Server,
 };
 
 fn main() -> std::io::Result<()> {
