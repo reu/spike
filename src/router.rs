@@ -1,6 +1,7 @@
 use std::{convert::Infallible, error::Error};
 
 use http::Method;
+use matchit::Match;
 use touche::{server::Service, Body, Request, Response, StatusCode};
 
 use crate::{
@@ -44,6 +45,24 @@ pub struct MethodRouter<B = Body, E = Infallible> {
     head: Option<Route<B, E>>,
     connect: Option<Route<B, E>>,
     fallback: Option<Route<B, E>>,
+}
+
+impl MethodRouter {
+    pub fn merge(&mut self, router: MethodRouter) {
+        macro_rules! merge_methods {
+            ($method:ident) => {
+                if self.$method.is_none() && router.$method.is_some() {
+                    self.$method = router.$method;
+                } else if self.$method.is_some() && router.$method.is_some() {
+                    panic!("Method already defined")
+                }
+            };
+            ($($method:ident),*) => {
+                $(merge_methods!($method);)*
+            }
+        }
+        merge_methods!(get, post, put, patch, delete, head, options, trace, connect, fallback);
+    }
 }
 
 macro_rules! impl_method_router_methods {
@@ -172,7 +191,17 @@ impl Router {
 
 impl Router {
     pub fn route(mut self, path: &str, route: MethodRouter) -> Router {
-        self.router.insert(path, route).unwrap();
+        match self.router.at_mut(path) {
+            Ok(Match {
+                value: existing_route,
+                ..
+            }) => {
+                existing_route.merge(route);
+            }
+            _ => {
+                self.router.insert(path, route).unwrap();
+            }
+        }
         self
     }
 }
@@ -182,42 +211,51 @@ impl Service for Router {
     type Body = Body;
     type Error = Box<dyn Error + Send + Sync>;
 
-    fn call(&self, request: Request<Body>) -> Result<Response<Self::Body>, Self::Error> {
-        let path = request.uri().path();
-        match self.router.at(path) {
-            Ok(route) => match *request.method() {
-                Method::GET if route.value.get.is_some() => {
-                    Ok(route.value.get.clone().unwrap().svc.call(request)?)
+    fn call(&self, mut req: Request<Body>) -> Result<Response<Self::Body>, Self::Error> {
+        match self.router.at(req.uri().path()) {
+            Ok(Match {
+                value: route,
+                params,
+            }) => {
+                let params = params
+                    .iter()
+                    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                    .collect::<Vec<_>>();
+                req.extensions_mut().insert(params);
+                match *req.method() {
+                    Method::GET if route.get.is_some() => {
+                        Ok(route.get.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::POST if route.post.is_some() => {
+                        Ok(route.post.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::PUT if route.put.is_some() => {
+                        Ok(route.put.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::PATCH if route.patch.is_some() => {
+                        Ok(route.patch.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::DELETE if route.delete.is_some() => {
+                        Ok(route.delete.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::HEAD if route.head.is_some() => {
+                        Ok(route.head.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::OPTIONS if route.options.is_some() => {
+                        Ok(route.options.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::TRACE if route.trace.is_some() => {
+                        Ok(route.trace.clone().unwrap().svc.call(req)?)
+                    }
+                    Method::CONNECT if route.connect.is_some() => {
+                        Ok(route.connect.clone().unwrap().svc.call(req)?)
+                    }
+                    _ if route.fallback.is_some() => {
+                        Ok(route.fallback.clone().unwrap().svc.call(req)?)
+                    }
+                    _ => Ok(StatusCode::METHOD_NOT_ALLOWED.into_response()),
                 }
-                Method::POST if route.value.post.is_some() => {
-                    Ok(route.value.post.clone().unwrap().svc.call(request)?)
-                }
-                Method::PUT if route.value.put.is_some() => {
-                    Ok(route.value.put.clone().unwrap().svc.call(request)?)
-                }
-                Method::PATCH if route.value.patch.is_some() => {
-                    Ok(route.value.patch.clone().unwrap().svc.call(request)?)
-                }
-                Method::DELETE if route.value.delete.is_some() => {
-                    Ok(route.value.delete.clone().unwrap().svc.call(request)?)
-                }
-                Method::HEAD if route.value.head.is_some() => {
-                    Ok(route.value.head.clone().unwrap().svc.call(request)?)
-                }
-                Method::OPTIONS if route.value.options.is_some() => {
-                    Ok(route.value.options.clone().unwrap().svc.call(request)?)
-                }
-                Method::TRACE if route.value.trace.is_some() => {
-                    Ok(route.value.trace.clone().unwrap().svc.call(request)?)
-                }
-                Method::CONNECT if route.value.connect.is_some() => {
-                    Ok(route.value.connect.clone().unwrap().svc.call(request)?)
-                }
-                _ if route.value.fallback.is_some() => {
-                    Ok(route.value.fallback.clone().unwrap().svc.call(request)?)
-                }
-                _ => Ok(StatusCode::METHOD_NOT_ALLOWED.into_response()),
-            },
+            }
             Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
         }
     }
