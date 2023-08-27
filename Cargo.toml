@@ -1,7 +1,13 @@
 [package]
 name = "spike"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
+license = "MIT"
+description = "Synchronous web framework, inspired by Axum"
+repository = "https://github.com/reu/spike"
+categories = ["network-programming", "web-programming::http-server"]
+keywords = ["http", "web", "framework"]
 
 [dependencies]
 matchit = "0.7.2"
