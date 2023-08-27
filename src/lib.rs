@@ -7,4 +7,8 @@ pub mod response;
 pub mod router;
 
 pub use crate::response::{IntoResponse, IntoResponseParts};
-pub use crate::router::{delete, get, patch, post, put, Router};
+pub use crate::router::Router;
+
+#[doc(no_inline)]
+pub use touche::http;
+pub use touche::Server;

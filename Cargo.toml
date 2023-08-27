@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-http = "0.2.9"
 matchit = "0.7.2"
-touche = { version = "0.0.7", default-features = false, features = ["server"] }
+touche = { version = "0.0.8", default-features = false, features = ["server"] }

@@ -1,7 +1,9 @@
 use std::{convert::Infallible, io, str::Utf8Error};
 
-use http::{request::Parts as RequestParts, HeaderMap};
-use touche::{Body, HttpBody, Method, Request, Response, StatusCode};
+use touche::{
+    http::request::Parts as RequestParts, Body, HeaderMap, HttpBody, Method, Request, Response,
+    StatusCode,
+};
 
 use crate::response::IntoResponse;
 

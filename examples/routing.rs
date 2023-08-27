@@ -1,6 +1,8 @@
-use http::{Method, StatusCode};
-use spike::{get, put, IntoResponse, Router};
-use touche::Server;
+use spike::{
+    http::{Method, StatusCode},
+    router::{get, put},
+    IntoResponse, Router, Server,
+};
 
 fn main() -> std::io::Result<()> {
     let router = Router::new()

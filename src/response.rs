@@ -1,7 +1,10 @@
 use std::{borrow::Cow, convert::Infallible};
 
-use http::{response::Parts as ResponseParts, HeaderValue};
-use touche::{header, Body, Response, StatusCode};
+use touche::{
+    header,
+    http::{response::Parts as ResponseParts, HeaderValue},
+    Body, Response, StatusCode,
+};
 
 pub trait IntoResponse {
     fn into_response(self) -> Response<Body>;

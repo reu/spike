@@ -1,8 +1,7 @@
 use std::{convert::Infallible, error::Error};
 
-use http::Method;
 use matchit::Match;
-use touche::{server::Service, Body, Request, Response, StatusCode};
+use touche::{server::Service, Body, Method, Request, Response, StatusCode};
 
 use crate::{
     handler::{Handler, HandlerService},
