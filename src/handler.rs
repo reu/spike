@@ -38,6 +38,16 @@ where
     }
 }
 
+impl<F, Res> Handler<()> for F
+where
+    F: FnOnce() -> Res + Clone + Send + 'static,
+    Res: IntoResponse,
+{
+    fn call(self, _req: Request<Body>) -> Response<Body> {
+        self().into_response()
+    }
+}
+
 macro_rules! impl_handler {
     ([$($ty:ident),*], $last:ident) => {
         #[allow(non_snake_case, unused_mut)]
