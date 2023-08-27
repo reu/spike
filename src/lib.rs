@@ -4,10 +4,10 @@ mod macros;
 pub mod extract;
 mod handler;
 pub mod response;
-pub mod router;
+pub mod routing;
 
 pub use crate::response::{IntoResponse, IntoResponseParts};
-pub use crate::router::Router;
+pub use crate::routing::Router;
 
 #[doc(no_inline)]
 pub use touche::http;

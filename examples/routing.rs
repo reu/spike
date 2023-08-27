@@ -1,6 +1,6 @@
 use spike::{
     http::{Method, StatusCode},
-    router::{get, put},
+    routing::{get, put},
     IntoResponse, Router, Server,
 };
 
